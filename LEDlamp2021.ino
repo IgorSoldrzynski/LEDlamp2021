@@ -29,13 +29,13 @@ LiquidCrystal lcd(8,9,4,5,6,7);
 
 //Moce kanałów ustawione przez menu:
 float usrMaxWhite = 0.95;
-float usrMaxBlue = 0.80;
-float usrMaxUv = 0.90;
+float usrMaxBlue = 0.60;
+float usrMaxUv = 0.80;
 
 //Domyślne godziny start/stop (dziesiętnie):
 const float gStartWhite = 9.5;
 const float gStartBlue = 9.0;
-const float gStartUv = 8.5;
+const float gStartUv = 9.5;
 
 //Godziny stop (dziesiętnie):
 const float gStopWhite = 19.5;
@@ -43,7 +43,10 @@ const float gStopBlue = 21.5;
 const float gStopUv = 20.5;
 
 //Czy chłodzenie włączone:
-bool cooling = 0;
+bool cooling = 1;
+
+//Poprzedni stan chłodzenia:
+bool prevCooling = 1;
 
 //Wciśnięty przycisk:
 byte pButton = 0;
@@ -61,6 +64,9 @@ char* menuTab[][2] = {
 //Liczba pozycji menu:
 byte maxMenuPos = sizeof(menuTab)/sizeof(menuTab[0]);
 
+//Poprzednia godzinoMinuta:
+float poprzGodzinoMinuta = 0.0;
+
 //powołanie kanałów z wartościami początkowymi
 KanalLED white(pinWhite, gStartWhite, gStopWhite, sysMaxWhite*usrMaxWhite);
 KanalLED blue(pinBlue, gStartBlue, gStopBlue, sysMaxBlue*usrMaxBlue);
@@ -70,6 +76,7 @@ void setup(){
   Serial.begin(9600);
   SoftPWMBegin();
   lcd.begin(16, 2);
+  lcd.clear();
   rtc.begin();
   // Ustawienie czasu w zegarze. Po ustawieniu zakomentować poniższe linie kodu i wgrać program jeszcze raz!
   //rtc.adjust(DateTime(F(__DATE__), F(__TIME__))); //systemowy
@@ -78,6 +85,8 @@ void setup(){
   // Ustawienie pinów wyjścia:
   pinMode(pinWent, OUTPUT);
   pinMode(pinBackLight, OUTPUT);
+  digitalWrite(pinWent, cooling);
+  digitalWrite(pinBackLight, cooling);
 
   //przywrócenie zapisanych ustawień w EEPROM
 //  if(EEPROM.read(0) != 0) {
@@ -96,29 +105,40 @@ void loop() {
   float godzinoMinuta = (zegar.hour() * 100 + zegar.minute() * 100 / 60)/100.0; 
   //--------------------------------Godzinominuta koniec-----------------------------
 
-  //ustawianie kanałów
-  blue.ustawKanal(godzinoMinuta);
-  uv.ustawKanal(godzinoMinuta);
-  white.ustawKanal(godzinoMinuta);
+  //jeśli zmieniła się godzinoMinuta:
+  if (poprzGodzinoMinuta != godzinoMinuta) {
+    //ustawianie kanałów
+    blue.ustawKanal(godzinoMinuta);
+    uv.ustawKanal(godzinoMinuta);
+    white.ustawKanal(godzinoMinuta);
 
-  if ((blue.getAktMoc()+uv.getAktMoc()+white.getAktMoc()) > 0) {
-    cooling = 1;
-  }
-  else {
-    cooling = 0;
-  }
-  digitalWrite(pinWent, cooling);
-  digitalWrite(pinBackLight, cooling);
-  lcd.clear();
-  lcd.setCursor(0,0);
-  lcd.print(FloatToStrTime(godzinoMinuta));
-  lcd.setCursor(0,1);
-  lcd.print("W:");
-  lcd.print(white.getAktMoc());
-  lcd.print("B:");
-  lcd.print(blue.getAktMoc());
-  lcd.print("@:");
-  lcd.print(uv.getAktMoc());
+    //włącznie/wyłączenie chłodzenia i podświetlenia ekranu:
+    if ((blue.getAktMoc()+uv.getAktMoc()+white.getAktMoc()) > 0) {
+      cooling = 1;
+    }
+    else {
+      cooling = 0;
+    }
+    if (cooling != prevCooling) {     
+      digitalWrite(pinWent, cooling);
+      digitalWrite(pinBackLight, cooling);
+      prevCooling = cooling;
+    }
+
+    //wyświetlenie informacji na ekranie:
+    lcd.setCursor(0,0);
+    lcd.print(FloatToStrTime(godzinoMinuta));
+    lcd.print("   REF:");
+    lcd.print(int(uv.getAktMoc()/sysMaxUv/255*100));
+    lcd.print("%");
+    lcd.setCursor(0,1);
+    lcd.print("WH:");
+    lcd.print(int(white.getAktMoc()/sysMaxWhite/255*100));
+    lcd.print("%");
+    lcd.print("  BL:");
+    lcd.print(int(blue.getAktMoc()/sysMaxBlue/255*100));
+    lcd.print("%");
+  } 
 
   //wczytanie wciśniętego przycisku:
   // 0 - brak wciśnięcia
