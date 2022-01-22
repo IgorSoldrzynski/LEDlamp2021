@@ -8,7 +8,7 @@
 #include <RTClib.h>
 #include <EEPROM.h>
 #include <LiquidCrystal.h>
-//#include "KanalLED.h"
+#include "KanalLED.h"
 
 #define pinWhite A2
 #define pinBlue A1
@@ -61,84 +61,10 @@ char* menuTab[][2] = {
 //Liczba pozycji menu:
 byte maxMenuPos = sizeof(menuTab)/sizeof(menuTab[0]);
 
-//----------------------------------------KLASA KanalLED---------------------------
-// Klasa, której instancje są poszczególnymi kanałami LED
-class KanalLED {
-  public:
-    KanalLED(int pin, float gStart, float gStop, float moc);
-    void ustawKanal(float godzinominuta);
-    int getPin();
-    int getAktMoc();
-    float getGstart();
-    float getGstop();
-    void setPin(int newPin);
-    void setMoc(float newMoc);
-    void setGstart(float newGstart);
-    void setGstop(float newGstop);
-    
-  private:
-    int _pin;
-    float _gStart;
-    float _gStop;
-    float _moc;
-    int _aktualnaMoc;  
-};
-//konstruktor
-KanalLED::KanalLED(int pin, float gStart, float gStop, float moc) {
-  setPin(pin);
-  setGstart(gStart);
-  setGstop(gStop);
-  setMoc(moc);
-}
-//metoda ustawiająca aktualną moc kanału na podstawie godzinominuty
-void KanalLED::ustawKanal(float godzinominuta) {
-  //oblicznie aktualnej mocy
-  if(godzinominuta>=_gStart && godzinominuta<=_gStop) {
-    int czasMap = map((int)(godzinominuta*100), (int)(_gStart*100), (int)(_gStop*100), 900, 2100);
-    float czas = czasMap / 100.0;
-    //_aktualnaMoc = 0,0831x^3-6,406x^2+133,09x-740,4 ; gdzie x = aktualny czas  
-    _aktualnaMoc=(int)((0.0831149*pow(czas,3)-6.406366*pow(czas,2)+133.09292*czas-740.4333)*_moc*255/100);
-    if(_aktualnaMoc<0) _aktualnaMoc=0;
-  }
-  else {
-    _aktualnaMoc = 0;
-  }
-
-  //korekcja rozbłysków driverów
-//  if(aktualnaMoc>0 && aktualnaMoc<26) aktualnaMoc=15;
-  //ustawianie pwm
-//  analogWrite(_pin, 255 - aktualnaMoc);
-  SoftPWMSet(_pin, _aktualnaMoc);
-}
-
-//---------------------------------------Setery------------------------------------
-//metoda ustawiająca nr pin kanału
-void KanalLED::setPin(int newPin){ _pin = newPin; }
-//metoda ustawiająca moc (mnożnik) kanału
-void KanalLED::setMoc(float newMoc){ _moc = newMoc; }
-//metoda ustawiająca godzinę włączenia kanału
-void KanalLED::setGstart(float newGstart){ _gStart = newGstart; }
-//metoda ustawiająca godzinę wyłączenia kanału
-void KanalLED::setGstop(float newGstop){ _gStop = newGstop; }
-
-//---------------------------------------Getery------------------------------------
-//metoda zwracająca nr pin kanału
-int KanalLED::getPin(){ return _pin; }
-//metoda zwracająca moc (mnożnik) kanału
-int KanalLED::getAktMoc(){ return _aktualnaMoc; }
-//metoda zwracająca godzinę włączenia kanału
-float KanalLED::getGstart(){ return _gStart; }
-//metoda zwracająca godzinę wyłączenia kanału
-float KanalLED::getGstop(){ return _gStop; }
-
-//-----------------------------------KONIEC klasy KanalLED-------------------------
-
-
 //powołanie kanałów z wartościami początkowymi
 KanalLED white(pinWhite, gStartWhite, gStopWhite, sysMaxWhite*usrMaxWhite);
 KanalLED blue(pinBlue, gStartBlue, gStopBlue, sysMaxBlue*usrMaxBlue);
 KanalLED uv(pinUv, gStartUv, gStopUv, sysMaxUv*usrMaxUv);
-
 
 void setup(){
   Serial.begin(9600);
@@ -149,11 +75,9 @@ void setup(){
   //rtc.adjust(DateTime(F(__DATE__), F(__TIME__))); //systemowy
   //rtc.adjust(DateTime(2022, 01, 01, 19, 22, 0)); //lub ręcznie ustawiony
 
-
   // Ustawienie pinów wyjścia:
   pinMode(pinWent, OUTPUT);
   pinMode(pinBackLight, OUTPUT);
-
 
   //przywrócenie zapisanych ustawień w EEPROM
 //  if(EEPROM.read(0) != 0) {
