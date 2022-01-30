@@ -1,5 +1,4 @@
 #include <Arduino.h>
-#include <SoftPWM.h>
 #include "KanalLED.h"
 
 //konstruktor
@@ -24,8 +23,8 @@ void KanalLED::ustawKanal(float godzinominuta) {
     _aktualnaMoc = 0;
   }
 
-//  analogWrite(_pin, _aktualnaMoc);
-  SoftPWMSet(_pin, _aktualnaMoc);
+  analogWrite(_pin, _aktualnaMoc);
+//  SoftPWMSet(_pin, _aktualnaMoc);
 }
 
 //---------------------------------------Setery------------------------------------

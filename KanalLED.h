@@ -2,7 +2,6 @@
 #define KANALLED_H
 
 #include <Arduino.h>
-#include <SoftPWM.h>
 
 //----------------------------------------KLASA KanalLED---------------------------
 // Klasa, której instancje są poszczególnymi kanałami LED
