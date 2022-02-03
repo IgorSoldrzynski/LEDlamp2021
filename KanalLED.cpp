@@ -42,6 +42,8 @@ void KanalLED::setGstop(float newGstop){ _gStop = newGstop; }
 int KanalLED::getPin(){ return _pin; }
 //metoda zwracająca moc (mnożnik) kanału
 int KanalLED::getAktMoc(){ return _aktualnaMoc; }
+//metoda ustawioną moc maksymalną kanału
+float KanalLED::getMoc(){ return _moc; }
 //metoda zwracająca godzinę włączenia kanału
 float KanalLED::getGstart(){ return _gStart; }
 //metoda zwracająca godzinę wyłączenia kanału

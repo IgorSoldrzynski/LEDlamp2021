@@ -11,6 +11,7 @@ class KanalLED {
     void ustawKanal(float godzinominuta);
     int getPin();
     int getAktMoc();
+    float getMoc();
     float getGstart();
     float getGstop();
     void setPin(int newPin);
