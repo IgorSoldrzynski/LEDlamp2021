@@ -24,7 +24,6 @@ void KanalLED::ustawKanal(float godzinominuta) {
   }
 
   analogWrite(_pin, _aktualnaMoc);
-//  SoftPWMSet(_pin, _aktualnaMoc);
 }
 
 //---------------------------------------Setery------------------------------------

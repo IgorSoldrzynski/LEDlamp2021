@@ -48,6 +48,9 @@
 #endif
 
 //definicja pozycji w tabeli MenuPos:
+//(gdyby zaszła koniecznośc modyfikacji menu)
+#define posEkranGlowny 0
+#define posUstawGodzine 1
 #define posWhiteStart 2
 #define posWhiteStop 3
 #define posWhiteMoc 4
@@ -57,11 +60,13 @@
 #define posUvStart 8
 #define posUvStop 9
 #define posUvMoc 10
+#define posZastosuj 11
+#define posZapisz 12
 
 //Pozycje menu:
 MenuPos menuTab[] = { 
   MenuPos("  Ekran glowny  ", 0.0, 2),
-  MenuPos("    Godzina     ", 0.0, 1), 
+  MenuPos(" Ustaw godzine  ", 0.0, 1), 
   MenuPos("  White start   ", defGstart, 1), 
   MenuPos("  White stop    ", defGstop, 1), 
   MenuPos("  White moc     ", sysMaxWhite*defMoc, 0), 
@@ -114,6 +119,8 @@ void setup(){
 #endif
   lcd.begin(16, 2);
   lcd.clear();
+  
+  //zwykły begin:
   //rtc.begin();
   //poniższy begin dla RTC_Millis:
   rtc.begin(DateTime(F(__DATE__), F(__TIME__)));
@@ -130,8 +137,10 @@ void setup(){
   digitalWrite(pinWent, cooling);
   digitalWrite(pinBackLight, backlight);
   
-
   //przywrócenie zapisanych ustawień w EEPROM
+  #ifdef ESP8266
+    EEPROM.begin(sizeof(white)+sizeof(blue)+sizeof(uv));
+  #endif
   if(EEPROM.read(0) != 0) {
     EEPROM.get(0, white);
     EEPROM.get(sizeof(white), blue);
@@ -149,6 +158,9 @@ void setup(){
     menuTab[posUvStop].value = uv.getGstop();
     menuTab[posUvMoc].value = uv.getMoc()/sysMaxUv;
   }
+  #ifdef ESP8266
+    EEPROM.end();
+  #endif
 }
 
 
@@ -187,7 +199,7 @@ void loopUpdate() {
     }
     else {
       cooling = 0;
-      if (menuPos == 0)  {
+      if (menuPos == posEkranGlowny)  {
         backlight = 0;
       } else {
         backlight = 1;
@@ -200,15 +212,17 @@ void loopUpdate() {
 
 void menu() {
 //wczytanie wciśniętego przycisku:
-  Serial.println("menu()");
   switch(button()){
     case 1:
-      if (menuPos == 11) {
+      if (menuPos == posUstawGodzine) {
+        zastosujGodzina();
+      }
+      else if (menuPos == posZastosuj) {
         zastosujUstawienia();
-      } else if (menuPos == 12) {
+      } else if (menuPos == posZapisz) {
         zapiszUstawienia();
       }
-      menuPos = 0;
+      menuPos = posEkranGlowny;
       break;
     case 2:
       menuPos-=1;
@@ -244,7 +258,7 @@ void lcdUpdate() {
   Serial.println("lcdUpdate()");
   lcd.clear();
   lcd.setCursor(0,0);
-  if (menuPos == 0) {
+  if (menuPos == posEkranGlowny) {
     lcd.print(FloatToStrNice(godzinoMinuta, 1));
     lcd.print("   REF:");
     lcd.print(int(uv.getAktMoc()/sysMaxUv/255*100));
@@ -258,7 +272,7 @@ void lcdUpdate() {
     lcd.print(int(blue.getAktMoc()/sysMaxBlue/255*100));
     lcd.print("%  ");   
   } else {
-    digitalWrite(pinBackLight, 1);
+    digitalWrite(pinBackLight, HIGH);
     lcd.print(menuTab[menuPos].text); 
     lcd.setCursor(5,1);
     lcd.print(FloatToStrNice(menuTab[menuPos].value, menuTab[menuPos]._type));
@@ -266,15 +280,21 @@ void lcdUpdate() {
 }
 
 
-//funkcja zastosowująca zmiany:
-void zastosujUstawienia() {
-  float ustawGodzinoMinuta = menuTab[1].value;
+//zapisuje ustawioną godzinę
+void zastosujGodzina() {
+  float ustawGodzinoMinuta = menuTab[posUstawGodzine].value;
   if (ustawGodzinoMinuta != 0.0) {
     rtc.adjust(DateTime(2022, 01, 01, int(ustawGodzinoMinuta), int(60*fmod(ustawGodzinoMinuta,1)), 0));
     godzinoMinuta = ustawGodzinoMinuta;
   }
-  ustawGodzinoMinuta = 0.0;
+  menuTab[posUstawGodzine].value = 0.0;
+  loopUpdate();
+  lcdUpdate();
+}
 
+
+//funkcja zastosowująca zmiany:
+void zastosujUstawienia() {
   white.setGstart(menuTab[posWhiteStart].value);
   white.setGstop(menuTab[posWhiteStop].value);  
   white.setMoc(sysMaxWhite*menuTab[posWhiteMoc].value);
@@ -298,9 +318,15 @@ void zapiszUstawienia() {
   zastosujUstawienia();
   //opis z dokumentacji EEPROM.put():
   //This function uses EEPROM.update() to perform the write, so does not rewrites the value if it didn't change.
+  #ifdef ESP8266
+    EEPROM.begin(sizeof(white)+sizeof(blue)+sizeof(uv));
+  #endif  
   EEPROM.put(0, white);
   EEPROM.put(sizeof(white), blue);
   EEPROM.put(sizeof(white)+sizeof(blue), uv);
+  #ifdef ESP8266
+    EEPROM.end();
+  #endif
 }
 
 
@@ -337,7 +363,7 @@ byte button() {
 //funkcja przekształca float do String - reprezentacja godziny (np. 12:50), reprezentacja mocy (np. 95%)
 String FloatToStrNice(float _float, byte _type) {
   if (_type == 0 ) {
-    return String(int(_float*100))+"%";
+    return String(int(round(_float*100)))+"%";
   }
   else if (_type == 1) {
     String _hours = String(int(_float));
