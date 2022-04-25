@@ -5,16 +5,40 @@
  */
 #include <RTClib.h>
 #include <EEPROM.h>
-#include <LiquidCrystal.h>
+
 #include "KanalLED.h"
 #include "MenuPos.h"
 
-// Zmierzone maksymalne możliwe moce kanałów:
-// White 1.0
-// Blue 1.0
-// White2(Uv) 0.55
+/* Model zegara RTC:
+ *  1 - DS3231
+ *  2 - DS1307
+ *  3 - RTC_Millis (programowy)  
+ */
+#define RTCtype 1
+
+/* Typ LCD:
+ *  1 - LCDshield16x2 normal
+ *  2 - LCDshield16x2 resistor (niskie odczyty z A0)
+ *  3 - OLED I2C
+ */
+#define LCDtype 3
+
+/* Ukrycie trzeciego kanału (wersja dwukanałowa):
+ *  0 - nie (wersja trójkanałowa)
+ *  1 - tak (wersja dwukanałowa)
+ */
+#define hide3ch 0
+
+/* Zmierzone maksymalne możliwe moce kanałów:
+ *  Wersja 3ch: White 1.0, Blue 1.0, White2(Uv) 0.55
+ *  Wersja 2ch: White 1.0, Blue 0.75
+ */
 #define sysMaxWhite 1.0
-#define sysMaxBlue 1.0
+#if hide3ch == 0
+  #define sysMaxBlue 1.0
+#else
+  #define sysMaxBlue 0.75
+#endif
 #define sysMaxUv 0.55
 
 #define defGstart 9.5
@@ -33,14 +57,20 @@
 #define pinUv D2
 #define pinWent D12
 #define pinBackLight D10
-#elif
+#elif LCDtype == 3
+#define pinWhite 3
+#define pinBlue 10
+#define pinUv 9
+#define pinWent 11
+#define pinBackLight 8
+#else
 #define lcdRs 8
 #define lcdEn 9
 #define lcdD4 4
 #define lcdD5 5
 #define lcdD6 6
 #define lcdD7 7
-#define pinWhite 13
+#define pinWhite 3
 #define pinBlue 11
 #define pinUv 2
 #define pinWent 12
@@ -69,13 +99,13 @@ MenuPos menuTab[] = {
   MenuPos(" Ustaw godzine  ", 0.0, 1), 
   MenuPos("  White start   ", defGstart, 1), 
   MenuPos("  White stop    ", defGstop, 1), 
-  MenuPos("  White moc     ", sysMaxWhite*defMoc, 0), 
+  MenuPos("  White moc     ", defMoc, 0), 
   MenuPos("   Blue start   ", defGstart, 1), 
   MenuPos("   Blue stop    ", defGstop, 1), 
-  MenuPos("   Blue moc     ", sysMaxBlue*defMoc, 0),
+  MenuPos("   Blue moc     ", defMoc, 0),
   MenuPos("  White2 start  ", defGstart, 1), 
   MenuPos("  White2 stop   ", defGstop, 1), 
-  MenuPos("  White2 moc    ", sysMaxUv*defMoc, 0),
+  MenuPos("  White2 moc    ", defMoc, 0),
   MenuPos("Zastosuj ustaw. ", 0.0, 2),
   MenuPos("Zapisz w EEPROM ", 0.0, 2)
 };
@@ -106,24 +136,61 @@ KanalLED blue(pinBlue, defGstart, defGstop, sysMaxBlue*defMoc);
 KanalLED uv(pinUv, defGstart, defGstop, sysMaxUv*defMoc);
 
 //W zależności od zastosowanego modułu RTC:
-RTC_Millis rtc;
-//RTC_DS3231 rtc;
-//RTC_DS1307 rtc;
+#if RTCtype == 1
+  RTC_DS3231 rtc;
+#elif RTCtype == 2
+  RTC_DS1307 rtc;
+#else 
+  RTC_Millis rtc;
+#endif
 
-LiquidCrystal lcd(lcdRs,lcdEn,lcdD4,lcdD5,lcdD6,lcdD7);
+//W zależności od typu LCD:
+#if LCDtype == 2
+  #define buttonReadFactor 0.7
+#else
+  #define buttonReadFactor 1
+#endif
+#if LCDtype == 3
+  #include <Wire.h>
+  #include <Adafruit_GFX.h>
+  #include <Adafruit_SSD1306.h>
+  Adafruit_SSD1306 lcd(128, 32, &Wire, -1);
+  #define pinButOk 5
+  #define pinButDown 7
+  #define pinButPlus 6
+  #define pinButMin 4
+#else
+  #include <LiquidCrystal.h>
+  LiquidCrystal lcd(lcdRs,lcdEn,lcdD4,lcdD5,lcdD6,lcdD7);
+#endif
+
+
 
 void setup(){
   Serial.begin(57600);
-#ifndef ESP8266
-    while (!Serial); // wait for serial port to connect. Needed for native USB
-#endif
-  lcd.begin(16, 2);
-  lcd.clear();
-  
-  //zwykły begin:
-  //rtc.begin();
-  //poniższy begin dla RTC_Millis:
-  rtc.begin(DateTime(F(__DATE__), F(__TIME__)));
+  #ifndef ESP8266
+      while (!Serial); // wait for serial port to connect. Needed for native USB
+  #endif
+  #if LCDtype == 3
+    lcd.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+    delay(2000);
+    lcd.clearDisplay();
+    lcd.setTextSize(1);
+    lcd.setTextColor(WHITE);
+    pinMode(pinButOk, INPUT_PULLUP);
+    pinMode(pinButDown, INPUT_PULLUP);
+    pinMode(pinButPlus, INPUT_PULLUP);
+    pinMode(pinButMin, INPUT_PULLUP);
+  #else
+    lcd.begin(16, 2);
+    lcd.clear();
+  #endif
+
+  #if RTCtype == 1 || RTCtype == 2
+    rtc.begin();
+  #else 
+    rtc.begin(DateTime(F(__DATE__), F(__TIME__)));
+  #endif
   // Ustawienie czasu w zegarze. Po ustawieniu zakomentować poniższe linie kodu i wgrać program jeszcze raz!
   //rtc.adjust(DateTime(F(__DATE__), F(__TIME__))); //systemowy
   //rtc.adjust(DateTime(2022, 01, 01, 20, 58, 0)); //lub ręcznie ustawiony
@@ -250,33 +317,65 @@ void menu() {
   if (prevMenuPos != menuPos) {
     lcdUpdate();
     prevMenuPos = menuPos;
+    //loopUpdate(); //?
   }
 }
 
 
 void lcdUpdate() {
   Serial.println("lcdUpdate()");
-  lcd.clear();
-  lcd.setCursor(0,0);
-  if (menuPos == posEkranGlowny) {
-    lcd.print(FloatToStrNice(godzinoMinuta, 1));
-    lcd.print("   REF:");
-    lcd.print(int(uv.getAktMoc()/sysMaxUv/255*100));
-    lcd.print("%  ");
-    lcd.setCursor(0,1);
-    lcd.print("WH:");
-    lcd.print(int(white.getAktMoc()/sysMaxWhite/255*100));
-    lcd.print("%  ");
-    lcd.setCursor(8,1);
-    lcd.print("BL:");
-    lcd.print(int(blue.getAktMoc()/sysMaxBlue/255*100));
-    lcd.print("%  ");   
-  } else {
-    digitalWrite(pinBackLight, HIGH);
-    lcd.print(menuTab[menuPos].text); 
-    lcd.setCursor(5,1);
-    lcd.print(FloatToStrNice(menuTab[menuPos].value, menuTab[menuPos]._type));
-  }
+  #if LCDtype == 3
+    lcd.clearDisplay();
+    if (menuPos == posEkranGlowny) {
+      lcd.setCursor(90,0);
+      lcd.println(FloatToStrNice(godzinoMinuta, 1));
+      lcd.print(F("Biale  "));
+      lcd.print(String(int(white.getAktMoc()/sysMaxWhite/255*100)));
+      lcd.println(F("%"));
+      lcd.print(F("Nieb.  "));
+      lcd.print(String(int(blue.getAktMoc()/sysMaxBlue/255*100)));
+      lcd.println(F("%"));
+      #if hide3ch == 0
+        lcd.print(F("Boczne "));
+        lcd.print(String(int(uv.getAktMoc()/sysMaxUv/255*100)));
+        lcd.print(F("%"));
+      #endif 
+    } else {
+      lcd.setCursor(0,0);
+      String menuText = menuTab[menuPos].text;
+      menuText.trim();
+      lcd.println(menuText);
+      lcd.println();
+      lcd.setTextSize(2);
+      lcd.println(FloatToStrNice(menuTab[menuPos].value, menuTab[menuPos]._type));
+      lcd.setTextSize(1);
+    }
+    lcd.display();
+  #else
+    lcd.clear(); 
+    lcd.setCursor(0,0);
+    if (menuPos == posEkranGlowny) {
+      lcd.print(FloatToStrNice(godzinoMinuta, 1));
+      #if hide3ch == 0
+        lcd.print("   REF:");
+        lcd.print(int(uv.getAktMoc()/sysMaxUv/255*100));
+        lcd.print("%  ");
+      #endif
+      lcd.setCursor(0,1);
+      lcd.print("WH:");
+      lcd.print(int(white.getAktMoc()/sysMaxWhite/255*100));
+      lcd.print("%  ");
+      lcd.setCursor(8,1);
+      lcd.print("BL:");
+      lcd.print(int(blue.getAktMoc()/sysMaxBlue/255*100));
+      lcd.print("%  ");   
+    } else {
+      digitalWrite(pinBackLight, HIGH);
+      lcd.print(menuTab[menuPos].text); 
+      lcd.setCursor(5,1);
+      lcd.print(FloatToStrNice(menuTab[menuPos].value, menuTab[menuPos]._type));
+    }
+  #endif
 }
 
 
@@ -338,25 +437,44 @@ void zapiszUstawienia() {
 // 4 - prawo
 // 5 - lewo
 byte button() {
-  int x = analogRead(A0);
-  if (x >=800) {
-    return 0;
-  }
-  else if (x < 60) {
-    return 4;
-  }
-  else if (x < 200) {
-    return 2;
-  }
-  else if (x < 400) {
-    return 3;
-  }
-  else if (x < 600) {
-    return 5;
-  }
-  else if (x < 800) {
-    return 1;
-  }
+  #if LCDtype == 3
+    if (digitalRead(pinButPlus) == LOW) {
+      return 4;
+    }
+    else if (digitalRead(pinButDown) == LOW) {
+      return 3;
+    }
+    else if (digitalRead(pinButMin) == LOW) {
+      return 5;
+    }
+    else if (digitalRead(pinButOk) == LOW) {
+      return 1;
+    }
+    else {
+      return 0;
+    }
+     
+  #else
+    int x = analogRead(A0);
+    if (x >= 800*buttonReadFactor) {
+      return 0;
+    }
+    else if (x < 60*buttonReadFactor) {
+      return 4;
+    }
+    else if (x < 200*buttonReadFactor) {
+      return 2;
+    }
+    else if (x < 400*buttonReadFactor) {
+      return 3;
+    }
+    else if (x < 600*buttonReadFactor) {
+      return 5;
+    }
+    else if (x < 800*buttonReadFactor) {
+      return 1;
+    }
+  #endif
 }
 
 
